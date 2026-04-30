@@ -1,0 +1,67 @@
+Metadata-Version: 2.4
+Name: backbonegpm
+Version: 0.0.1
+Summary: Hierarchical shapeGMM -> BVVMMM -> GPM model for peptide backbone generation.
+Author: Martin McCullagh
+License: MIT
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: numpy
+Requires-Dist: pandas
+Provides-Extra: model
+Requires-Dist: bvvmmm; extra == "model"
+Requires-Dist: plgpm; extra == "model"
+Provides-Extra: md
+Requires-Dist: MDAnalysis; extra == "md"
+Provides-Extra: torch
+Requires-Dist: torch; extra == "torch"
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: ruff; extra == "dev"
+Requires-Dist: build; extra == "dev"
+Requires-Dist: twine; extra == "dev"
+
+# backbonegpm
+
+Prototype package for a hierarchical peptide-backbone model:
+
+```text
+shapeGMM macrostates -> BVVMMM residue microstates -> GPM residue coupling -> generated backbones
+```
+
+## Development install
+
+From the repository root:
+
+```bash
+python -m pip install -e ".[md,torch,dev]"
+```
+
+If `shapeGMMTorch`, `multi`, or `plgpm` are local packages, install them separately in the same environment.
+
+## Minimal usage
+
+```python
+import numpy as np
+from backbonegpm import FitConfig, HierarchicalBackboneGPM
+
+components = [
+    np.array([1, 2]),
+    np.array([2, 2]),
+]
+
+config = FitConfig(
+    n_macrostates=2,
+    microstate_components=components,
+    macro_selection="name N CA C",
+    internal_selection="resname ACE ALA NME",
+)
+
+model = HierarchicalBackboneGPM.from_files("topology.prmtop", ["traj.nc"], config)
+model.fit()
+samples = model.generate(n_samples=1000)
+```
+
+## Current status
+
+This is an early package skeleton. The core objects are in `model.py`; internal-coordinate extraction is in `internal.py`; local-geometry emissions are in `emissions.py`; coordinate generation is in `builder.py`; trajectory feature extraction is in `features.py`; and PDB writing is in `io.py`.

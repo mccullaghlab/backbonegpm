@@ -234,6 +234,7 @@ class HierarchicalBackboneGPM:
         enforce_training_macro_counts: bool = False,
         independent: bool = False,
         random_state: int | None = None,
+        use_mean_geometry: bool = False,
     ) -> dict[str, Any]:
         self._check_fitted()
         macro_ids, z_by_macro = self.sample_microstates(
@@ -268,6 +269,7 @@ class HierarchicalBackboneGPM:
                         "omega_params": mm.omega_params,
                     },
                     random_state=None if random_state is None else random_state + m,
+                    use_means=use_mean_geometry,
                 )
                 local_geometry_by_macro.append(local_df)
 

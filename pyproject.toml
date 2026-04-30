@@ -18,6 +18,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+model = [
+  "bvvmmm",
+  "plgpm",
+]
 md = [
   "MDAnalysis",
 ]
