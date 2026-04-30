@@ -136,7 +136,9 @@ class HierarchicalBackboneGPM:
         if phi_psi is None or internal_df is None:
             if universe is None:
                 raise ValueError("Provide universe, or both phi_psi and internal_df.")
+            self._log("Computing backbone internal coordinates from trajectory. This may take a while for large systems.")
             internal_df = self._compute_internal_df(universe)
+            self._log("Extracting phi/psi values from internal coordinate dataframe.")
             phi_psi, model_resids = self._extract_phi_psi_from_internal_df(internal_df)
         else:
             model_resids = self._infer_model_resids(internal_df)
