@@ -34,6 +34,8 @@ class FitConfig:
     random_state: Optional[int] = None
     fit_local_geometry: bool = True
     capped: bool = True
+    verbose: bool = False
+    verbose_submodels: bool = False
 
 
 @dataclass
@@ -119,7 +121,8 @@ class HierarchicalBackboneGPM:
             omega.
         """
         cfg = self.config
-        rng = np.random.default_rng(cfg.random_state)
+
+        self._log("Starting hierarchical model fit.")
 
         if universe is None and hasattr(self, "topology_"):
             universe = self._load_universe(self.topology_, self.trajectory_)
@@ -132,7 +135,9 @@ class HierarchicalBackboneGPM:
         if phi_psi is None or internal_df is None:
             if universe is None:
                 raise ValueError("Provide universe, or both phi_psi and internal_df.")
+            self._log("Computing backbone internal coordinates from trajectory. This may take a while for large systems.")
             internal_df = self._compute_internal_df(universe)
+            self._log("Extracting phi/psi values from internal coordinate dataframe.")
             phi_psi, model_resids = self._extract_phi_psi_from_internal_df(internal_df)
         else:
             model_resids = self._infer_model_resids(internal_df)
@@ -141,8 +146,12 @@ class HierarchicalBackboneGPM:
         self.internal_df_ = internal_df.copy()
         self.model_resids_ = list(model_resids)
 
-        self.macro_model_ = self._fit_shape_gmm(macro_features[:: cfg.delta_fit])
+        macro_features_fit = macro_features[:: cfg.delta_fit]
+        self._log(f"Determining macrostates for {macro_features.shape[1]} atoms over {macro_features.shape[0]} frames using shapeGMM.")
+        self._log(f"Fitting shapeGMM on {macro_features_fit.shape[0]} frames (delta_fit={cfg.delta_fit}).")
+        self.macro_model_ = self._fit_shape_gmm(macro_features_fit)
         self.macrostate_ids_ = np.asarray(self.macro_model_.predict(macro_features), dtype=int)
+        self._log("Assigned macrostates to all frames.")
         counts = np.bincount(self.macrostate_ids_, minlength=cfg.n_macrostates)
         self.macrostate_probs_ = counts / counts.sum()
 
@@ -153,8 +162,10 @@ class HierarchicalBackboneGPM:
                 raise ValueError(f"Macrostate {m} has zero assigned frames.")
 
             components_m = self._components_for_macrostate(m)
+            self._log(f"Fitting macrostate {m + 1}/{cfg.n_macrostates}: {int(mask.sum())} frames.")
             bvvmmm = self._fit_bvvmmm(self.phi_psi_[mask], components_m)
             z_m = np.asarray(bvvmmm.predict_micro(self.phi_psi_[mask]), dtype=int)
+            self._log(f"Fitting GPM for macrostate {m + 1}/{cfg.n_macrostates}.")
             gpm = self._fit_gpm(z_m, bvvmmm.components)
 
             mm = MacrostateModel(
@@ -165,6 +176,7 @@ class HierarchicalBackboneGPM:
             )
 
             if cfg.fit_local_geometry:
+                self._log(f"Fitting local geometry emissions for macrostate {m + 1}/{cfg.n_macrostates}.")
                 df_m = self.internal_df_[self.internal_df_["frame"].isin(np.where(mask)[0])].copy()
                 mm.normal_params, mm.omega_params = fit_local_geometry_emissions(
                     internal_df=df_m,
@@ -175,6 +187,7 @@ class HierarchicalBackboneGPM:
             self.macrostates_.append(mm)
 
         self.is_fitted_ = True
+        self._log("Hierarchical model fit completed.")
         return self
 
     # ------------------------------------------------------------------
@@ -278,6 +291,11 @@ class HierarchicalBackboneGPM:
     # ------------------------------------------------------------------
     # Dependency wrappers: keep imports local so package can have extras.
     # ------------------------------------------------------------------
+
+    def _log(self, message: str):
+        if self.config.verbose:
+            print(f"[HierarchicalBackboneGPM] {message}")
+
     def _load_universe(self, topology, trajectory):
         return load_universe(topology, trajectory)
 
@@ -287,13 +305,25 @@ class HierarchicalBackboneGPM:
 
         dtype = self.config.dtype if self.config.dtype is not None else torch.float64
         device = self.config.device if self.config.device is not None else torch.device("cpu")
-        return sgmm_fit_with_attempts(X, self.config.n_macrostates, dtype=dtype, device=device)
+        return sgmm_fit_with_attempts(
+            X,
+            self.config.n_macrostates,
+            dtype=dtype,
+            device=device,
+            verbose=self.config.verbose_submodels,
+        )
 
     def _fit_bvvmmm(self, phi_psi_m, components_m):
         from multi import MultiIndSineBVvMMM
 
         model = MultiIndSineBVvMMM()
-        model.fit(phi_psi_m, components=components_m, n_attempts=self.config.bvvmmm_n_attempts, plot=False)
+        model.fit(
+            phi_psi_m,
+            components=components_m,
+            n_attempts=self.config.bvvmmm_n_attempts,
+            plot=False,
+            verbose=self.config.verbose_submodels,
+        )
         model.refine(phi_psi_m)
         return model
 
