@@ -1,0 +1,18 @@
+# ignore all logs
+*.log
+# ignore gz
+*.gz
+# ignore wheel files
+*.whl
+# ignore vi backups
+*~
+*.swp
+# ignore jupyter checkpoints
+*.ipynb_checkpoints
+# ignore build directory
+build
+dist
+debug
+# pycache
+__pycache__
+

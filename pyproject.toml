@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "backbonegpm"
+version = "0.0.1"
+description = "Hierarchical shapeGMM -> BVVMMM -> GPM model for peptide backbone generation."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+  {name = "Martin McCullagh"}
+]
+dependencies = [
+  "numpy",
+  "pandas",
+]
+
+[project.optional-dependencies]
+md = [
+  "MDAnalysis",
+]
+torch = [
+  "torch",
+]
+dev = [
+  "pytest",
+  "ruff",
+  "build",
+  "twine",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
