@@ -148,6 +148,7 @@ class HierarchicalBackboneGPM:
         self.model_resids_ = list(model_resids)
 
         macro_features_fit = macro_features[:: cfg.delta_fit]
+        self._log(f"Determining macrostates for {macro_features.shape[1]} atoms over {macro_features.shape[0]} frames using shapeGMM.")
         self._log(f"Fitting shapeGMM on {macro_features_fit.shape[0]} frames (delta_fit={cfg.delta_fit}).")
         self.macro_model_ = self._fit_shape_gmm(macro_features_fit)
         self.macrostate_ids_ = np.asarray(self.macro_model_.predict(macro_features), dtype=int)
