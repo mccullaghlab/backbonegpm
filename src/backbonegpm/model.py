@@ -75,6 +75,7 @@ class HierarchicalBackboneGPM:
         self.macrostates_: list[MacrostateModel] = []
         self.macrostate_probs_: Optional[np.ndarray] = None
         self.is_fitted_: bool = False
+        self._macrostate_masks_: list[np.ndarray] = []
 
     # ------------------------------------------------------------------
     # Construction helpers
@@ -111,7 +112,7 @@ class HierarchicalBackboneGPM:
             macrostate features, phi/psi, and local internal coordinates.
         macro_features
             Optional array passed directly to shapeGMM. Shape should be
-            (n_frames, n_atoms, 3) 
+            (n_frames, n_atoms, 3)
         phi_psi
             Optional torsion array, shape (n_frames, n_model_residues, 2).
             Convention should match the BVVMMM implementation.
@@ -120,8 +121,28 @@ class HierarchicalBackboneGPM:
             coordinates: frame, resid, resname, CN, NCA, CAC, angles, phi, psi,
             omega.
         """
-        cfg = self.config
+        self._prepare_fit_inputs(
+            universe=universe,
+            macro_features=macro_features,
+            phi_psi=phi_psi,
+            internal_df=internal_df,
+        )
+        self.fit_macrostates()
+        self.fit_internal_coordinate_models()
+        self.assign_microstates()
+        self.fit_gpm()
+        self.is_fitted_ = True
+        self._log("Hierarchical model fit completed.")
+        return self
 
+    def _prepare_fit_inputs(
+        self,
+        universe: Any | None = None,
+        macro_features: np.ndarray | None = None,
+        phi_psi: np.ndarray | None = None,
+        internal_df: pd.DataFrame | None = None,
+    ) -> None:
+        cfg = self.config
         self._log("Starting hierarchical model fit.")
 
         if universe is None and hasattr(self, "topology_"):
@@ -142,52 +163,79 @@ class HierarchicalBackboneGPM:
         else:
             model_resids = self._infer_model_resids(internal_df)
 
+        self.macro_features_ = np.asarray(macro_features)
         self.phi_psi_ = np.asarray(phi_psi)
         self.internal_df_ = internal_df.copy()
         self.model_resids_ = list(model_resids)
 
-        macro_features_fit = macro_features[:: cfg.delta_fit]
-        self._log(f"Determining macrostates for {macro_features.shape[1]} atoms over {macro_features.shape[0]} frames using shapeGMM.")
+    def fit_macrostates(self) -> "HierarchicalBackboneGPM":
+        cfg = self.config
+        if not hasattr(self, "macro_features_"):
+            raise RuntimeError("Missing macro_features_. Run fit(...) first or call _prepare_fit_inputs(...).")
+
+        macro_features_fit = self.macro_features_[:: cfg.delta_fit]
+        self._log(f"Determining macrostates for {self.macro_features_.shape[1]} atoms over {self.macro_features_.shape[0]} frames using shapeGMM.")
         self._log(f"Fitting shapeGMM on {macro_features_fit.shape[0]} frames (delta_fit={cfg.delta_fit}).")
         self.macro_model_ = self._fit_shape_gmm(macro_features_fit)
-        self.macrostate_ids_ = np.asarray(self.macro_model_.predict(macro_features), dtype=int)
+        self.macrostate_ids_ = np.asarray(self.macro_model_.predict(self.macro_features_), dtype=int)
         self._log("Assigned macrostates to all frames.")
         counts = np.bincount(self.macrostate_ids_, minlength=cfg.n_macrostates)
         self.macrostate_probs_ = counts / counts.sum()
+        self._macrostate_masks_ = [self.macrostate_ids_ == m for m in range(cfg.n_macrostates)]
+        return self
+
+    def fit_internal_coordinate_models(self) -> "HierarchicalBackboneGPM":
+        cfg = self.config
+        if self.macrostate_ids_ is None or self.phi_psi_ is None:
+            raise RuntimeError("Macrostates and phi/psi must be available before fitting internal coordinate models.")
 
         self.macrostates_ = []
         for m in range(cfg.n_macrostates):
-            mask = self.macrostate_ids_ == m
+            mask = self._macrostate_masks_[m]
             if not np.any(mask):
                 raise ValueError(f"Macrostate {m} has zero assigned frames.")
 
             components_m = self._components_for_macrostate(m)
             self._log(f"Fitting macrostate {m + 1}/{cfg.n_macrostates}: {int(mask.sum())} frames.")
             bvvmmm = self._fit_bvvmmm(self.phi_psi_[mask], components_m)
-            z_m = np.asarray(bvvmmm.predict_micro(self.phi_psi_[mask]), dtype=int)
-            self._log(f"Fitting GPM for macrostate {m + 1}/{cfg.n_macrostates}.")
-            gpm = self._fit_gpm(z_m, bvvmmm.components)
 
-            mm = MacrostateModel(
-                bvvmmm=bvvmmm,
-                gpm=gpm,
-                components=bvvmmm.components,
-                model_resids=list(self.model_resids_),
+            self.macrostates_.append(
+                MacrostateModel(
+                    bvvmmm=bvvmmm,
+                    gpm=None,
+                    components=bvvmmm.components,
+                    model_resids=list(self.model_resids_),
+                )
             )
+        return self
 
-            if cfg.fit_local_geometry:
-                self._log(f"Fitting local geometry emissions for macrostate {m + 1}/{cfg.n_macrostates}.")
+    def assign_microstates(self) -> "HierarchicalBackboneGPM":
+        if self.phi_psi_ is None or not self.macrostates_:
+            raise RuntimeError("Internal coordinate models must be fit before microstate assignment.")
+
+        for m, mm in enumerate(self.macrostates_):
+            mask = self._macrostate_masks_[m]
+            z_m = np.asarray(mm.bvvmmm.predict_micro(self.phi_psi_[mask]), dtype=int)
+            mm.microstates_ = z_m
+            if self.config.fit_local_geometry:
+                self._log(f"Fitting local geometry emissions for macrostate {m + 1}/{self.config.n_macrostates}.")
                 df_m = self.internal_df_[self.internal_df_["frame"].isin(np.where(mask)[0])].copy()
                 mm.normal_params, mm.omega_params = fit_local_geometry_emissions(
                     internal_df=df_m,
                     z=z_m,
                     model_resids=self.model_resids_,
                 )
+        return self
 
-            self.macrostates_.append(mm)
+    def fit_gpm(self) -> "HierarchicalBackboneGPM":
+        if not self.macrostates_:
+            raise RuntimeError("No macrostate models available. Fit internal coordinate models first.")
 
-        self.is_fitted_ = True
-        self._log("Hierarchical model fit completed.")
+        for m, mm in enumerate(self.macrostates_):
+            if not hasattr(mm, "microstates_"):
+                raise RuntimeError("Microstates must be assigned before fitting GPM models.")
+            self._log(f"Fitting GPM for macrostate {m + 1}/{self.config.n_macrostates}.")
+            mm.gpm = self._fit_gpm(mm.microstates_, mm.components)
         return self
 
     # ------------------------------------------------------------------
