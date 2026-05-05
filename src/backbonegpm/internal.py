@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-import MDAnalysis as mda
+import importlib
 
 
 def bond_length(p1, p2):
@@ -333,6 +333,61 @@ def compute_capped_backbone_internal_coordinates(universe, selection="all", fram
     return pd.DataFrame(rows)
 
 
+def _compute_internal_df_from_cached_residues(residues):
+    n = len(residues)
+    rows = []
+    for i in range(n):
+        res = residues[i]
+        row = {
+            "i": i,
+            "resid": res["resid"],
+            "resname": res["resname"],
+            "CN": np.nan,
+            "NCA": np.nan,
+            "CAC": np.nan,
+            "C_N_CA": np.nan,
+            "N_CA_C": np.nan,
+            "CA_C_N": np.nan,
+            "phi": np.nan,
+            "psi": np.nan,
+            "omega": np.nan,
+        }
+
+        N_i = res["N"].position if res["N"] is not None else None
+        CA_i = res["CA"].position if res["CA"] is not None else None
+        C_i = res["C"].position if res["C"] is not None else None
+
+        if N_i is not None and CA_i is not None:
+            row["NCA"] = bond_length(N_i, CA_i)
+        if CA_i is not None and C_i is not None:
+            row["CAC"] = bond_length(CA_i, C_i)
+        if N_i is not None and CA_i is not None and C_i is not None:
+            row["N_CA_C"] = bond_angle_deg(N_i, CA_i, C_i)
+
+        if i > 0:
+            C_prev = residues[i - 1]["C"].position if residues[i - 1]["C"] is not None else None
+            if C_prev is not None and N_i is not None:
+                row["CN"] = bond_length(C_prev, N_i)
+            if C_prev is not None and N_i is not None and CA_i is not None:
+                row["C_N_CA"] = bond_angle_deg(C_prev, N_i, CA_i)
+                if C_i is not None:
+                    row["phi"] = dihedral_deg(C_prev, N_i, CA_i, C_i)
+
+        if i < n - 1:
+            nxt = residues[i + 1]
+            N_next = nxt["N"].position if nxt["N"] is not None else None
+            CA_next = nxt["CA"].position if nxt["CA"] is not None else None
+            if CA_i is not None and C_i is not None and N_next is not None:
+                row["CA_C_N"] = bond_angle_deg(CA_i, C_i, N_next)
+            if N_i is not None and CA_i is not None and C_i is not None and N_next is not None:
+                row["psi"] = dihedral_deg(N_i, CA_i, C_i, N_next)
+            if CA_i is not None and C_i is not None and N_next is not None and CA_next is not None:
+                row["omega"] = dihedral_deg(CA_i, C_i, N_next, CA_next)
+
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
 def compute_backbone_over_trajectory(
     topology_or_universe,
     trajectory=None,
@@ -343,15 +398,18 @@ def compute_backbone_over_trajectory(
     if hasattr(topology_or_universe, "trajectory"):
         u = topology_or_universe
     else:
+        mda = importlib.import_module("MDAnalysis")
         u = mda.Universe(topology_or_universe, trajectory) if trajectory else mda.Universe(topology_or_universe)
+
+    residues = (
+        get_capped_backbone_residues(u, selection=selection)
+        if capped
+        else get_backbone_atoms_by_residue(u, selection=selection)
+    )
 
     all_frames = []
     for ts in u.trajectory:
-        if capped:
-            df = compute_capped_backbone_internal_coordinates(u, selection=selection)
-        else:
-            df = compute_backbone_internal_coordinates(u, selection=selection)
-
+        df = _compute_internal_df_from_cached_residues(residues)
         df["frame"] = ts.frame
         if cluster_ids is not None:
             df["macrostate_id"] = cluster_ids[ts.frame]

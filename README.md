@@ -39,6 +39,22 @@ model.fit()
 samples = model.generate(n_samples=1000)
 ```
 
-## Current status
+## New workflow helpers
 
-This is an early package skeleton. The core objects are in `model.py`; internal-coordinate extraction is in `internal.py`; local-geometry emissions are in `emissions.py`; coordinate generation is in `builder.py`; trajectory feature extraction is in `features.py`; and PDB writing is in `io.py`.
+- `compute_backbone_over_trajectory(...)` now caches residue/atom selections once and reuses them for all frames; this significantly reduces repeated MDAnalysis selection overhead during internal-coordinate extraction.
+- `HierarchicalBackboneGPM.microstate_scan()` now returns `self` and correctly persists scanned component counts into `config.microstate_components`.
+- `HierarchicalBackboneGPM.scan_and_fit_microstates()` is a convenience method that performs:
+  1. component scan,
+  2. BVVMMM microstate fitting,
+  3. microstate assignment,
+  4. GPM fitting.
+
+This is useful after a macrostate fit when you want to complete the model object for generation.
+
+## Running tests
+
+```bash
+pytest -q
+```
+
+A GitHub Actions workflow is included at `.github/workflows/ci.yml` and runs the test suite on pushes and pull requests.
