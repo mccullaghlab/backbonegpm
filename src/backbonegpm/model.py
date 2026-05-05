@@ -30,6 +30,7 @@ class FitConfig:
     delta_fit: int = 1
     dtype: Any = None
     device: Any = None
+    shapeGMM_n_attempts: int = 10
     bvvmmm_n_attempts: int = 10
     random_state: Optional[int] = None
     fit_local_geometry: bool = True
@@ -417,6 +418,7 @@ class HierarchicalBackboneGPM:
         return sgmm_fit_with_attempts(
             X,
             self.config.n_macrostates,
+            n_attempts=self.config.shapeGMM_n_attempts,
             dtype=dtype,
             device=device,
             verbose=self.config.verbose_submodels,
