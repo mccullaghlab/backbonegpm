@@ -269,14 +269,16 @@ class HierarchicalBackboneGPM:
         for m, mm in enumerate(self.macrostates_):
             if not hasattr(mm, "microstates_"):
                 raise RuntimeError("Microstates must be assigned before fitting GPM models.")
-            # No coupling model possible for a single site
-            if mm.microstates_.shape[1] == 1:
+            # Edge case one residue
+            z_m = np.asarray(mm.microstates_)
+            n_sites = 1 if z_m.ndim == 1 else z_m.shape[1]
+            if n_sites == 1:
                 self._log(
                     f"Skipping GPM for macrostate {m + 1}/{self.config.n_macrostates}: "
                     "only one site, so using empirical microstate frequencies."
                 )
                 mm.gpm = None
-                vals, counts = np.unique(mm.microstates_[:, 0], return_counts=True)
+                vals, counts = np.unique(z_m.ravel(), return_counts=True)
                 mm.microstate_values_ = vals
                 mm.microstate_probs_ = counts / counts.sum()
                 continue
@@ -318,7 +320,9 @@ class HierarchicalBackboneGPM:
         for m, mm in enumerate(self.macrostates_):
             n_m = int(np.sum(macrostate_ids == m))
             # edge case one residue
-            if mm.microstates_.shape[1] == 1:
+            z_m = np.asarray(mm.microstates_)
+            n_sites = 1 if z_m.ndim == 1 else z_m.shape[1]
+            if n_sites == 1:
                 z_by_macro.append( rng.choice(
                     mm.microstate_values_,
                     size=n_m,
