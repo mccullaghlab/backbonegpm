@@ -186,23 +186,33 @@ class HierarchicalBackboneGPM:
 
     def microstate_scan(self) -> "HierarchicalBackboneGPM":
         from multi import MultiIndSineBVvMMM
+
         cfg = self.config
         if self.macrostate_ids_ is None or self.phi_psi_ is None:
             raise RuntimeError("Macrostates and phi/psi must be available before scanning bivariate von Mises components")
 
-        self.macrostates_ = []
-        self.config.microstate_components = []
+        scanned_components = []
         for m in range(cfg.n_macrostates):
             mask = self._macrostate_masks_[m]
             if not np.any(mask):
                 raise ValueError(f"Macrostate {m} has zero assigned frames.")
 
             self._log(f"Scanning phi/psi marginals in macrostate {m + 1}/{cfg.n_macrostates}: {int(mask.sum())} frames.")
-
             model = MultiIndSineBVvMMM()
             model.component_scan(self.phi_psi_[mask])
-            self.config.microstate_components.append(model.components)
-        
+            scanned_components.append(model.components)
+
+        self.config.microstate_components = scanned_components
+        return self
+
+    def scan_and_fit_microstates(self) -> "HierarchicalBackboneGPM":
+        """Convenience routine: component scan then microstate fitting + GPM."""
+        self.microstate_scan()
+        self.fit_internal_coordinate_models()
+        self.assign_microstates()
+        self.fit_gpm()
+        self.is_fitted_ = True
+        return self
 
 
     def fit_internal_coordinate_models(self) -> "HierarchicalBackboneGPM":
