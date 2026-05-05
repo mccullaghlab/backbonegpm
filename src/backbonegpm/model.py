@@ -128,10 +128,13 @@ class HierarchicalBackboneGPM:
             internal_df=internal_df,
         )
         self.fit_macrostates()
-        self.fit_internal_coordinate_models()
-        self.assign_microstates()
-        self.fit_gpm()
-        self.is_fitted_ = True
+        if self.config.microstate_components is None:
+            self.scan_and_fit_microstates()
+        else:
+            self.fit_phi_psi_models()
+            self.assign_microstates_fit_internal_coordinate_models()
+            self.fit_gpm()
+            self.is_fitted_ = True
         self._log("Hierarchical model fit completed.")
         return self
 
@@ -208,14 +211,14 @@ class HierarchicalBackboneGPM:
     def scan_and_fit_microstates(self) -> "HierarchicalBackboneGPM":
         """Convenience routine: component scan then microstate fitting + GPM."""
         self.microstate_scan()
-        self.fit_internal_coordinate_models()
-        self.assign_microstates()
+        self.fit_phi_psi_models()
+        self.assign_microstates_fit_internal_coordinate_models()
         self.fit_gpm()
         self.is_fitted_ = True
         return self
 
 
-    def fit_internal_coordinate_models(self) -> "HierarchicalBackboneGPM":
+    def fit_phi_psi_models(self) -> "HierarchicalBackboneGPM":
         cfg = self.config
         if self.macrostate_ids_ is None or self.phi_psi_ is None:
             raise RuntimeError("Macrostates and phi/psi must be available before fitting internal coordinate models.")
@@ -240,9 +243,9 @@ class HierarchicalBackboneGPM:
             )
         return self
 
-    def assign_microstates(self) -> "HierarchicalBackboneGPM":
+    def assign_microstates_fit_internal_coordinate_models(self) -> "HierarchicalBackboneGPM":
         if self.phi_psi_ is None or not self.macrostates_:
-            raise RuntimeError("Internal coordinate models must be fit before microstate assignment.")
+            raise RuntimeError("Phi/psi models must be fit before microstate assignment.")
 
         for m, mm in enumerate(self.macrostates_):
             mask = self._macrostate_masks_[m]
