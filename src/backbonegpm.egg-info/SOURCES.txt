@@ -15,3 +15,4 @@ src/backbonegpm.egg-info/requires.txt
 src/backbonegpm.egg-info/top_level.txt
 tests/test_builder_smoke.py
 tests/test_imports.py
+tests/test_model_workflow.py

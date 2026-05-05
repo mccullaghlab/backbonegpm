@@ -131,10 +131,7 @@ class HierarchicalBackboneGPM:
         if self.config.microstate_components is None:
             self.scan_and_fit_microstates()
         else:
-            self.fit_phi_psi_models()
-            self.assign_microstates_fit_internal_coordinate_models()
-            self.fit_gpm()
-            self.is_fitted_ = True
+            self.fit_microstates()
         self._log("Hierarchical model fit completed.")
         return self
 
@@ -211,12 +208,16 @@ class HierarchicalBackboneGPM:
     def scan_and_fit_microstates(self) -> "HierarchicalBackboneGPM":
         """Convenience routine: component scan then microstate fitting + GPM."""
         self.microstate_scan()
+        self.fit_microstates()
+        return self
+
+    def fit_microstates(self) -> "HierarchicalBackboneGPM":
+        """Convenience routine: combined microstate fitting """
         self.fit_phi_psi_models()
         self.assign_microstates_fit_internal_coordinate_models()
         self.fit_gpm()
         self.is_fitted_ = True
         return self
-
 
     def fit_phi_psi_models(self) -> "HierarchicalBackboneGPM":
         cfg = self.config
