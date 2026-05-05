@@ -131,7 +131,6 @@ class HierarchicalBackboneGPM:
             if universe is None:
                 raise ValueError("Provide either universe or macro_features.")
             macro_features = self._compute_macro_features(universe, cfg.macro_selection)
-        self._log(f"Determining macrostates for {macro_features.shape[1]} atoms over {macro_features.shape[0]} frames using shapeGMM.")
 
         if phi_psi is None or internal_df is None:
             if universe is None:
